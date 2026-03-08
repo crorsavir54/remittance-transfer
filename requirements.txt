@@ -1,0 +1,4 @@
+streamlit>=1.40
+anthropic>=0.40
+openpyxl>=3.1
+mistralai>=1.0
