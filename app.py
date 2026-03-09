@@ -3,6 +3,7 @@ import hashlib
 import io
 import mimetypes
 import os
+import zipfile
 
 import openpyxl
 import streamlit as st
@@ -49,7 +50,8 @@ if st.button("Extract Data", type="primary", disabled=not image_files):
         st.error("Please provide a Mistral API key in the sidebar.")
         st.stop()
 
-    all_rows: list[dict] = []
+    # rows_by_file: list of (filename, rows)
+    rows_by_file: list[tuple[str, list[dict]]] = []
     progress = st.progress(0, text="Extracting data from files...")
 
     for i, img_file in enumerate(image_files):
@@ -65,7 +67,7 @@ if st.button("Extract Data", type="primary", disabled=not image_files):
             try:
                 content_hash = hashlib.md5(img_bytes).hexdigest()
                 rows = cached_extract(content_hash, img_bytes, media_type, mistral_api_key)
-                all_rows.extend(rows)
+                rows_by_file.append((img_file.name, rows))
                 st.write(f"`{img_file.name}` — **{len(rows)}** entries found")
             except Exception as e:
                 st.error(f"Failed on {img_file.name}: {e}")
@@ -74,45 +76,60 @@ if st.button("Extract Data", type="primary", disabled=not image_files):
 
     progress.empty()
 
-    if not all_rows:
+    if not rows_by_file:
         st.error("No data extracted. Check your files and try again.")
         st.stop()
 
-    st.subheader(f"Extracted Data — {len(all_rows)} entries")
-    st.dataframe(all_rows, use_container_width=True)
+    total = sum(len(r) for _, r in rows_by_file)
+    st.subheader(f"Extracted Data — {total} entries across {len(rows_by_file)} file(s)")
 
-    # --- Build CSV ---
-    csv_buf = io.StringIO()
-    writer = csv.DictWriter(csv_buf, fieldnames=["last_name", "first_name", "amount"])
-    writer.writeheader()
-    writer.writerows(all_rows)
-    csv_bytes = csv_buf.getvalue().encode("utf-8")
+    # --- Preview: one tab per file ---
+    tab_labels = [name for name, _ in rows_by_file]
+    tabs = st.tabs(tab_labels)
+    for tab, (_, rows) in zip(tabs, rows_by_file):
+        with tab:
+            st.dataframe(rows, use_container_width=True)
 
-    # --- Build XLSX ---
+    # --- Build XLSX (one sheet per file) ---
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Remittance"
-    ws.append(["Last Name", "First Name", "Amount"])
-    for row in all_rows:
-        ws.append([row.get("last_name", ""), row.get("first_name", ""), row.get("amount", "")])
+    wb.remove(wb.active)  # remove default empty sheet
+    for filename, rows in rows_by_file:
+        base_name: str = os.path.splitext(filename)[0]
+        sheet_name = base_name[:31]  # type: ignore[index]  # Excel sheet name limit
+        ws = wb.create_sheet(title=sheet_name)
+        ws.append(["Last Name", "First Name", "Amount"])
+        for row in rows:
+            ws.append([row.get("last_name", ""), row.get("first_name", ""), row.get("amount", "")])
     xlsx_buf = io.BytesIO()
     wb.save(xlsx_buf)
     xlsx_bytes = xlsx_buf.getvalue()
+
+    # --- Build ZIP of CSVs (one CSV per file) ---
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename, rows in rows_by_file:
+            csv_name = filename.rsplit(".", 1)[0] + ".csv"
+            csv_buf = io.StringIO()
+            writer = csv.DictWriter(csv_buf, fieldnames=["last_name", "first_name", "amount"])
+            writer.writeheader()
+            writer.writerows(rows)
+            zf.writestr(csv_name, csv_buf.getvalue())
+    zip_bytes = zip_buf.getvalue()
 
     # --- Downloads ---
     st.subheader("Download")
     col1, col2 = st.columns(2)
     col1.download_button(
-        label="Download CSV",
-        data=csv_bytes,
-        file_name="remittance_data.csv",
-        mime="text/csv",
-    )
-    col2.download_button(
-        label="Download Excel",
+        label="Download Excel (all sheets)",
         data=xlsx_bytes,
         file_name="remittance_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    col2.download_button(
+        label="Download CSVs (zip)",
+        data=zip_bytes,
+        file_name="remittance_data.zip",
+        mime="application/zip",
     )
 
 elif not image_files:
