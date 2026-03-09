@@ -36,16 +36,32 @@ def cached_extract(content_hash: str, _image_bytes: bytes, media_type: str, mist
     return extract_from_image(_image_bytes, media_type, mistral_api_key=mistral_key)
 
 
-# --- File upload ---
-st.subheader("Upload Remittance Files")
-image_files = st.file_uploader(
-    "Remittance images or PDFs — upload multiple at once",
-    type=["jpg", "jpeg", "png", "webp", "pdf"],
-    accept_multiple_files=True,
-)
+# --- Input: upload or camera ---
+st.subheader("Remittance Files")
+upload_tab, camera_tab = st.tabs(["Upload Files", "Capture Photo"])
+
+with upload_tab:
+    image_files = st.file_uploader(
+        "Remittance images or PDFs — upload multiple at once",
+        type=["jpg", "jpeg", "png", "webp", "pdf"],
+        accept_multiple_files=True,
+    )
+
+with camera_tab:
+    camera_photo = st.camera_input("Take a photo of a remittance document")
+
+# Combine both input sources
+all_inputs: list[tuple[str, bytes, str]] = []  # (name, bytes, media_type)
+for f in (image_files or []):
+    raw = f.read()
+    mt = "application/pdf" if f.name.lower().endswith(".pdf") else (mimetypes.guess_type(f.name)[0] or "image/jpeg")
+    all_inputs.append((f.name, raw, mt))
+if camera_photo is not None:
+    photo_num = len([n for n, _, _ in all_inputs if n.startswith("photo_")]) + 1
+    all_inputs.append((f"photo_{photo_num}.jpg", camera_photo.read(), "image/jpeg"))
 
 # --- Process ---
-if st.button("Extract Data", type="primary", disabled=not image_files):
+if st.button("Extract Data", type="primary", disabled=not all_inputs):
     if not mistral_api_key:
         st.error("Please provide a Mistral API key in the sidebar.")
         st.stop()
@@ -54,25 +70,17 @@ if st.button("Extract Data", type="primary", disabled=not image_files):
     rows_by_file: list[tuple[str, list[dict]]] = []
     progress = st.progress(0, text="Extracting data from files...")
 
-    for i, img_file in enumerate(image_files):
-        img_bytes = img_file.read()
-        if img_file.name.lower().endswith(".pdf"):
-            media_type = "application/pdf"
-        else:
-            media_type, _ = mimetypes.guess_type(img_file.name)
-            if not media_type or not media_type.startswith("image/"):
-                media_type = "image/jpeg"
-
-        with st.spinner(f"Extracting from {img_file.name}..."):
+    for i, (name, img_bytes, media_type) in enumerate(all_inputs):
+        with st.spinner(f"Extracting from {name}..."):
             try:
                 content_hash = hashlib.md5(img_bytes).hexdigest()
                 rows = cached_extract(content_hash, img_bytes, media_type, mistral_api_key)
-                rows_by_file.append((img_file.name, rows))
-                st.write(f"`{img_file.name}` — **{len(rows)}** entries found")
+                rows_by_file.append((name, rows))
+                st.write(f"`{name}` — **{len(rows)}** entries found")
             except Exception as e:
-                st.error(f"Failed on {img_file.name}: {e}")
+                st.error(f"Failed on {name}: {e}")
 
-        progress.progress((i + 1) / len(image_files))
+        progress.progress((i + 1) / len(all_inputs))
 
     progress.empty()
 
@@ -132,5 +140,5 @@ if st.button("Extract Data", type="primary", disabled=not image_files):
         mime="application/zip",
     )
 
-elif not image_files:
-    st.info("Upload one or more remittance images or PDFs to get started.")
+elif not all_inputs:
+    st.info("Upload files or capture a photo to get started.")
