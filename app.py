@@ -132,7 +132,8 @@ if st.button("Extract & Fill Amounts", type="primary", disabled=not (xlsx_file a
     # Match and fill
     with st.spinner("Matching names and filling amounts..."):
         try:
-            wb, ws, name_col, amount_col, header_row = load_xlsx(xlsx_file)
+            xlsx_bytes = xlsx_file.read()
+            wb, ws, name_col, amount_col, header_row = load_xlsx(xlsx_bytes)
         except ValueError as e:
             st.error(str(e))
             st.stop()

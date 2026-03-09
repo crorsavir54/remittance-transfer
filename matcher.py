@@ -34,18 +34,18 @@ def build_lookup(extracted_rows: list[dict]) -> dict[str, float]:
     return lookup
 
 
-def load_xlsx(file) -> tuple:
+def load_xlsx(file_bytes: bytes) -> tuple:
     """
     Load an xlsx file and detect the Full Name and Amount column indices.
 
     Args:
-        file: file-like object or path
+        file_bytes: raw bytes of the xlsx file
 
     Returns:
         (workbook, sheet, name_col_idx, amount_col_idx, header_row_idx)
         Column indices are 1-based (openpyxl convention).
     """
-    wb = load_workbook(file)
+    wb = load_workbook(io.BytesIO(file_bytes))
     ws = wb.active
 
     name_col = None
