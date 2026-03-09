@@ -1,85 +1,42 @@
+import csv
 import hashlib
+import io
 import mimetypes
 import os
 
+import openpyxl
 import streamlit as st
 
-from extractor import extract_from_image, MODELS
-from matcher import load_xlsx, build_lookup, match_and_fill, save_xlsx, FUZZY_THRESHOLD
+from extractor import extract_from_image
 
-st.set_page_config(page_title="Remittance Amount Transfer", layout="centered")
-st.title("Remittance Amount Transfer")
+st.set_page_config(page_title="Remittance File Converter", layout="centered")
+st.title("Remittance File Converter")
 
 # --- Sidebar: settings ---
 with st.sidebar:
     st.header("Settings")
 
-    api_key_input = st.text_input(
-        "Anthropic API Key",
+    mistral_api_key = st.text_input(
+        "Mistral API Key",
         type="password",
-        value=st.secrets.get("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY", "")),
-        help="Required for all modes (Claude vision or Mistral OCR + Claude parse).",
+        value=st.secrets.get("MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", "")),
+        help="Required. Get one at console.mistral.ai",
     )
-    if api_key_input:
-        os.environ["ANTHROPIC_API_KEY"] = api_key_input
-
-    model_label = st.selectbox(
-        "Extraction model",
-        options=list(MODELS.keys()),
-        index=0,
-        help="Mistral OCR is best for document scans. Claude Haiku is fastest for clear images.",
-    )
-    selected_model = MODELS[model_label]
-
-    mistral_api_key = ""
-    if selected_model == "mistral-ocr":
-        mistral_api_key = st.text_input(
-            "Mistral API Key",
-            type="password",
-            value=st.secrets.get("MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", "")),
-            help="Required when using Mistral OCR. Get one at console.mistral.ai",
-        )
-        if mistral_api_key:
-            os.environ["MISTRAL_API_KEY"] = mistral_api_key
-
-    fuzzy_threshold = st.slider(
-        "Name match sensitivity",
-        min_value=0.60,
-        max_value=1.00,
-        value=FUZZY_THRESHOLD,
-        step=0.05,
-        help="Lower = more lenient (catches typos). Higher = stricter.",
-    )
+    if mistral_api_key:
+        os.environ["MISTRAL_API_KEY"] = mistral_api_key
 
     st.divider()
-    st.caption(
-        "Cost guide per page:\n"
-        "- Mistral OCR: ~$0.001 + $0.001 parse = ~$0.002\n"
-        "- Haiku: ~$0.004\n"
-        "- Sonnet: ~$0.012\n"
-        "- Opus: ~$0.020"
-    )
+    st.caption("Cost guide per page:\n- Mistral OCR: ~$0.001 + parse ~$0.001 = ~$0.002")
 
 
 @st.cache_data(show_spinner=False)
-def cached_extract(content_hash: str, _image_bytes: bytes, media_type: str, model: str, mistral_key: str = "") -> list[dict]:
-    """Cache key is the MD5 of the file content. _image_bytes is skipped by Streamlit's hasher (underscore prefix)."""
-    return extract_from_image(_image_bytes, media_type, model, mistral_api_key=mistral_key)
+def cached_extract(content_hash: str, _image_bytes: bytes, media_type: str, mistral_key: str) -> list[dict]:
+    """Cache key is the MD5 of the file content."""
+    return extract_from_image(_image_bytes, media_type, mistral_api_key=mistral_key)
 
 
-def image_hash(image_bytes: bytes) -> str:
-    return hashlib.md5(image_bytes).hexdigest()
-
-
-# --- File uploads ---
-st.subheader("1. Upload Excel File")
-xlsx_file = st.file_uploader(
-    "Excel file with Full Name and Amount columns",
-    type=["xlsx"],
-    accept_multiple_files=False,
-)
-
-st.subheader("2. Upload Remittance Files")
+# --- File upload ---
+st.subheader("Upload Remittance Files")
 image_files = st.file_uploader(
     "Remittance images or PDFs — upload multiple at once",
     type=["jpg", "jpeg", "png", "webp", "pdf"],
@@ -87,15 +44,13 @@ image_files = st.file_uploader(
 )
 
 # --- Process ---
-st.subheader("3. Process")
-
-if st.button("Extract & Fill Amounts", type="primary", disabled=not (xlsx_file and image_files)):
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        st.error("Please provide an Anthropic API key in the sidebar.")
+if st.button("Extract Data", type="primary", disabled=not image_files):
+    if not mistral_api_key:
+        st.error("Please provide a Mistral API key in the sidebar.")
         st.stop()
 
     all_rows: list[dict] = []
-    progress = st.progress(0, text="Extracting data from images...")
+    progress = st.progress(0, text="Extracting data from files...")
 
     for i, img_file in enumerate(image_files):
         img_bytes = img_file.read()
@@ -109,7 +64,7 @@ if st.button("Extract & Fill Amounts", type="primary", disabled=not (xlsx_file a
         with st.spinner(f"Extracting from {img_file.name}..."):
             try:
                 content_hash = hashlib.md5(img_bytes).hexdigest()
-                rows = cached_extract(content_hash, img_bytes, media_type, selected_model, mistral_api_key)
+                rows = cached_extract(content_hash, img_bytes, media_type, mistral_api_key)
                 all_rows.extend(rows)
                 st.write(f"`{img_file.name}` — **{len(rows)}** entries found")
             except Exception as e:
@@ -120,52 +75,45 @@ if st.button("Extract & Fill Amounts", type="primary", disabled=not (xlsx_file a
     progress.empty()
 
     if not all_rows:
-        st.error("No data extracted. Check your images and try again.")
+        st.error("No data extracted. Check your files and try again.")
         st.stop()
 
-    # Preview extracted data
-    with st.expander(f"Preview extracted data ({len(all_rows)} entries)", expanded=False):
-        st.dataframe(all_rows, use_container_width=True)
+    st.subheader(f"Extracted Data — {len(all_rows)} entries")
+    st.dataframe(all_rows, use_container_width=True)
 
-    lookup = build_lookup(all_rows)
+    # --- Build CSV ---
+    csv_buf = io.StringIO()
+    writer = csv.DictWriter(csv_buf, fieldnames=["last_name", "first_name", "amount"])
+    writer.writeheader()
+    writer.writerows(all_rows)
+    csv_bytes = csv_buf.getvalue().encode("utf-8")
 
-    # Match and fill
-    with st.spinner("Matching names and filling amounts..."):
-        try:
-            xlsx_bytes = xlsx_file.read()
-            wb, ws, name_col, amount_col, header_row = load_xlsx(xlsx_bytes)
-        except ValueError as e:
-            st.error(str(e))
-            st.stop()
+    # --- Build XLSX ---
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Remittance"
+    ws.append(["Last Name", "First Name", "Amount"])
+    for row in all_rows:
+        ws.append([row.get("last_name", ""), row.get("first_name", ""), row.get("amount", "")])
+    xlsx_buf = io.BytesIO()
+    wb.save(xlsx_buf)
+    xlsx_bytes = xlsx_buf.getvalue()
 
-        matched, unmatched = match_and_fill(
-            ws, name_col, amount_col, header_row, lookup, threshold=fuzzy_threshold
-        )
-
-    # Results
-    st.subheader("Results")
-    c1, c2 = st.columns(2)
-    c1.metric("Matched & Filled", len(matched))
-    c2.metric("Unmatched", len(unmatched))
-
-    if matched:
-        with st.expander(f"Matched rows ({len(matched)})", expanded=False):
-            st.write(matched)
-
-    if unmatched:
-        with st.expander(f"Unmatched — review manually ({len(unmatched)})", expanded=True):
-            st.warning("These names had no match in the images. Try lowering the sensitivity slider.")
-            st.write(unmatched)
-
-    # Download
-    output_bytes = save_xlsx(wb)
-    original_name = xlsx_file.name.rsplit(".", 1)[0]
-    st.download_button(
-        label="Download Filled Excel File",
-        data=output_bytes,
-        file_name=f"{original_name}_filled.xlsx",
+    # --- Downloads ---
+    st.subheader("Download")
+    col1, col2 = st.columns(2)
+    col1.download_button(
+        label="Download CSV",
+        data=csv_bytes,
+        file_name="remittance_data.csv",
+        mime="text/csv",
+    )
+    col2.download_button(
+        label="Download Excel",
+        data=xlsx_bytes,
+        file_name="remittance_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-elif not xlsx_file or not image_files:
-    st.info("Upload an Excel file and at least one image to get started.")
+elif not image_files:
+    st.info("Upload one or more remittance images or PDFs to get started.")
