@@ -62,9 +62,9 @@ with st.sidebar:
 
 
 @st.cache_data(show_spinner=False)
-def cached_extract(image_bytes: bytes, media_type: str, model: str, mistral_key: str = "") -> list[dict]:
-    """Cache extraction by image content + model so re-runs don't re-call the API."""
-    return extract_from_image(image_bytes, media_type, model, mistral_api_key=mistral_key)
+def cached_extract(content_hash: str, _image_bytes: bytes, media_type: str, model: str, mistral_key: str = "") -> list[dict]:
+    """Cache key is the MD5 of the file content. _image_bytes is skipped by Streamlit's hasher (underscore prefix)."""
+    return extract_from_image(_image_bytes, media_type, model, mistral_api_key=mistral_key)
 
 
 def image_hash(image_bytes: bytes) -> str:
@@ -108,7 +108,8 @@ if st.button("Extract & Fill Amounts", type="primary", disabled=not (xlsx_file a
 
         with st.spinner(f"Extracting from {img_file.name}..."):
             try:
-                rows = cached_extract(img_bytes, media_type, selected_model, mistral_api_key)
+                content_hash = hashlib.md5(img_bytes).hexdigest()
+                rows = cached_extract(content_hash, img_bytes, media_type, selected_model, mistral_api_key)
                 all_rows.extend(rows)
                 st.write(f"`{img_file.name}` — **{len(rows)}** entries found")
             except Exception as e:
