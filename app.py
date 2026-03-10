@@ -1,3 +1,4 @@
+import base64
 import csv
 import hashlib
 import io
@@ -12,6 +13,29 @@ from extractor import extract_from_image
 
 st.set_page_config(page_title="Remittance File Converter", layout="centered")
 st.title("Remittance File Converter")
+
+# --- Background image ---
+_bg_path = os.path.join(os.path.dirname(__file__), "mat-cover.png")
+if os.path.exists(_bg_path):
+    with open(_bg_path, "rb") as _f:
+        _bg_b64 = base64.b64encode(_f.read()).decode()
+    st.markdown(
+        f"""
+        <style>
+        .bg-figure {{
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            height: 420px;
+            opacity: 0.18;
+            pointer-events: none;
+            z-index: 0;
+        }}
+        </style>
+        <img class="bg-figure" src="data:image/png;base64,{_bg_b64}" />
+        """,
+        unsafe_allow_html=True,
+    )
 
 # --- Sidebar: settings ---
 with st.sidebar:
