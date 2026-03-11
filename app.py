@@ -37,21 +37,8 @@ if os.path.exists(_bg_path):
         unsafe_allow_html=True,
     )
 
-# --- Sidebar: settings ---
-with st.sidebar:
-    st.header("Settings")
-
-    mistral_api_key = st.text_input(
-        "Mistral API Key",
-        type="password",
-        value=st.secrets.get("MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", "")),
-        help="Required. Get one at console.mistral.ai",
-    )
-    if mistral_api_key:
-        os.environ["MISTRAL_API_KEY"] = mistral_api_key
-
-    st.divider()
-    st.caption("Cost guide per page:\n- Mistral OCR: ~$0.001 + parse ~$0.001 = ~$0.002")
+# --- API key (from secrets or environment only — not shown in UI) ---
+mistral_api_key: str = st.secrets.get("MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", ""))
 
 
 @st.cache_data(show_spinner=False)
@@ -87,7 +74,7 @@ if camera_photo is not None:
 # --- Process ---
 if st.button("Extract Data", type="primary", disabled=not all_inputs):
     if not mistral_api_key:
-        st.error("Please provide a Mistral API key in the sidebar.")
+        st.error("Mistral API key not configured. Set MISTRAL_API_KEY in Streamlit secrets.")
         st.stop()
 
     # rows_by_file: list of (filename, rows)
