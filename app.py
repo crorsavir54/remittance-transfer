@@ -47,9 +47,17 @@ st.markdown(
     .stApp {
         background-color: #fff0f5;
     }
-    /* Headings */
-    h1, h2, h3 {
-        color: #c2185b;
+    /* Headings — force dark pink, override Streamlit defaults */
+    h1, h2, h3,
+    .stApp h1, .stApp h2, .stApp h3,
+    [data-testid="stAppViewContainer"] h1,
+    [data-testid="stAppViewContainer"] h2,
+    [data-testid="stAppViewContainer"] h3 {
+        color: #880e4f !important;
+    }
+    /* General text */
+    .stApp, .stApp p, .stApp label, .stApp div {
+        color: #2d002d !important;
     }
     </style>
     """,
