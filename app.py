@@ -59,10 +59,12 @@ st.markdown(
     .stApp, .stApp p, .stApp label, .stApp div {
         color: #2d002d !important;
     }
-    /* File uploader "Browse files" button — white text on dark button */
+    /* File uploader "Browse files" button — pink background, white text always visible */
     [data-testid="stFileUploaderDropzoneInput"] + div button,
     [data-testid="stFileUploader"] button,
     .stFileUploader button {
+        background-color: #e91e8c !important;
+        border-color: #e91e8c !important;
         color: #ffffff !important;
     }
     </style>
