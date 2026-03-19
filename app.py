@@ -11,8 +11,50 @@ import streamlit as st
 
 from extractor import extract_from_image
 
-st.set_page_config(page_title="Remittance File Converter", layout="centered")
-st.title("Remittance File Converter")
+st.set_page_config(page_title="MC Remittance File to Excel Converter", layout="centered")
+st.title("MC Remittance File to Excel Converter")
+
+# --- Pink theme ---
+st.markdown(
+    """
+    <style>
+    /* Primary buttons */
+    div.stButton > button[kind="primary"],
+    div.stDownloadButton > button[kind="primary"] {
+        background-color: #e91e8c;
+        border-color: #e91e8c;
+        color: #ffffff;
+    }
+    div.stButton > button[kind="primary"]:hover,
+    div.stDownloadButton > button[kind="primary"]:hover {
+        background-color: #c2185b;
+        border-color: #c2185b;
+    }
+    /* Accent / active tab underline and progress bar */
+    .stProgress > div > div > div > div {
+        background-color: #e91e8c;
+    }
+    /* Tab active indicator */
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #e91e8c;
+        border-bottom-color: #e91e8c;
+    }
+    /* Sidebar / header accent */
+    header[data-testid="stHeader"] {
+        background-color: #fce4ec;
+    }
+    /* Page background tint */
+    .stApp {
+        background-color: #fff0f5;
+    }
+    /* Headings */
+    h1, h2, h3 {
+        color: #c2185b;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # --- Background image ---
 _bg_path = os.path.join(os.path.dirname(__file__), "mat-cover.png")
