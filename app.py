@@ -153,3 +153,6 @@ if st.button("Extract Data", type="primary", disabled=not all_inputs):
 
 elif not all_inputs:
     st.info("Upload files or capture a photo to get started.")
+
+st.markdown("---")
+st.caption("custom app by kuya MC")
